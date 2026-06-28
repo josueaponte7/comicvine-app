@@ -34,4 +34,30 @@ class ComicVineService {
     final List<dynamic> results = data['results'] ?? [];
     return results.map((json) => Character.fromJson(json)).toList();
   }
+
+  // Busca personajes por nombre.
+  // Usa el filtro de Comic Vine: filter=name:loquesea
+  Future<List<Character>> searchCharacters(String query, {int limit = 20}) async {
+    // Si la búsqueda está vacía, no llamamos a la red: devolvemos lista vacía.
+    if (query.trim().isEmpty) return [];
+
+    // Uri.encodeComponent escapa espacios y caracteres raros del nombre.
+    final encoded = Uri.encodeComponent(query.trim());
+    final url = Uri.parse('$_baseUrl/characters/?filter=name:$encoded&limit=$limit');
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Error de red: ${response.statusCode}');
+    }
+
+    final Map<String, dynamic> data = json.decode(response.body);
+
+    if (data['status_code'] != 1) {
+      throw Exception('Error de Comic Vine: ${data['error']}');
+    }
+
+    final List<dynamic> results = data['results'] ?? [];
+    return results.map((json) => Character.fromJson(json)).toList();
+  }
 }
