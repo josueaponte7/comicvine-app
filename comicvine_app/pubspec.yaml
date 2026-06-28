@@ -37,6 +37,7 @@ dependencies:
   http: ^1.6.0
   cached_network_image: ^3.4.1
   flutter_html: ^3.0.0
+  google_mlkit_translation: ^0.13.1
 
 dev_dependencies:
   flutter_test:

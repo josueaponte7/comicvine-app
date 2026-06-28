@@ -1,50 +1,30 @@
 // Servicio que habla con el Worker de Cloudflare (el proxy de Comic Vine).
-// La UI le pide datos a esta clase; nunca toca URLs ni JSON directamente.
+// Trae personajes y traduce su deck al español antes de devolverlos.
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/character.dart';
+import 'translation_service.dart';
 
 class ComicVineService {
-  // URL pública de tu Worker. Todas las peticiones pasan por aquí.
   static const String _baseUrl = 'https://proxy-comicvine.josueaponte.workers.dev';
 
-  // Trae una lista de personajes.
-  // [limit] controla cuántos pedimos de golpe.
+  // Lista de personajes por defecto.
   Future<List<Character>> getCharacters({int limit = 20}) async {
-    // Construimos la URL hacia el Worker. El Worker ya añade la clave y format=json.
     final url = Uri.parse('$_baseUrl/characters/?limit=$limit');
-
-    final response = await http.get(url);
-
-    // Si el Worker o Comic Vine no respondieron con 200, fallamos claro.
-    if (response.statusCode != 200) {
-      throw Exception('Error de red: ${response.statusCode}');
-    }
-
-    // Convertimos el texto de la respuesta en un mapa Dart.
-    final Map<String, dynamic> data = json.decode(response.body);
-
-    // Comic Vine usa status_code:1 para "OK". Cualquier otra cosa es un error suyo.
-    if (data['status_code'] != 1) {
-      throw Exception('Error de Comic Vine: ${data['error']}');
-    }
-
-    // 'results' es la lista de personajes en bruto. Mapeamos cada uno a Character.
-    final List<dynamic> results = data['results'] ?? [];
-    return results.map((json) => Character.fromJson(json)).toList();
+    return _pedirYTraducir(url);
   }
 
-  // Busca personajes por nombre.
-  // Usa el filtro de Comic Vine: filter=name:loquesea
+  // Búsqueda por nombre.
   Future<List<Character>> searchCharacters(String query, {int limit = 20}) async {
-    // Si la búsqueda está vacía, no llamamos a la red: devolvemos lista vacía.
     if (query.trim().isEmpty) return [];
-
-    // Uri.encodeComponent escapa espacios y caracteres raros del nombre.
     final encoded = Uri.encodeComponent(query.trim());
     final url = Uri.parse('$_baseUrl/characters/?filter=name:$encoded&limit=$limit');
+    return _pedirYTraducir(url);
+  }
 
+  // Lógica compartida: pide a la API, valida, parsea y traduce los decks.
+  Future<List<Character>> _pedirYTraducir(Uri url) async {
     final response = await http.get(url);
 
     if (response.statusCode != 200) {
@@ -58,6 +38,28 @@ class ComicVineService {
     }
 
     final List<dynamic> results = data['results'] ?? [];
-    return results.map((json) => Character.fromJson(json)).toList();
+    final personajes = results.map((json) => Character.fromJson(json)).toList();
+    return _traducirDecks(personajes);
+  }
+
+  // Traduce el deck de cada personaje al español.
+  // Solo el deck; la descripción larga se traduce en el detalle al abrirlo.
+  Future<List<Character>> _traducirDecks(List<Character> personajes) async {
+    final traductor = TranslationService.instance;
+    final traducidos = <Character>[];
+
+    for (final p in personajes) {
+      final deckEs = await traductor.traducir(p.deck);
+      traducidos.add(Character(
+        id: p.id,
+        name: p.name,
+        deck: deckEs,           // deck en español (lo que se muestra)
+        deckOriginal: p.deck,   // deck en inglés (para el toggle del detalle)
+        imageUrl: p.imageUrl,
+        imageUrlLarge: p.imageUrlLarge,
+        description: p.description,
+      ));
+    }
+    return traducidos;
   }
 }
